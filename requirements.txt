@@ -1,0 +1,5 @@
+aiortc>=1.9
+aiohttp>=3.9
+PyAudioWPatch>=0.2.12
+numpy>=1.26
+qrcode>=7.4

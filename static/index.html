@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Som do PC">
+<meta name="theme-color" content="#0b1020">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎧</text></svg>">
+<title>Som do PC</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b1020; --card: rgba(255,255,255,.06); --line: rgba(255,255,255,.1);
+    --ink: #f3f4f6; --muted: #9ca3af;
+    --accent: #3b82f6; --accent2: #8b5cf6; --ok: #22c55e; --warn: #f59e0b; --bad: #ef4444;
+    --lvl: 0;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; display: flex; flex-direction: column; align-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: var(--ink); -webkit-tap-highlight-color: transparent; user-select: none;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(59,130,246,.25), transparent 60%),
+      radial-gradient(800px 500px at 100% 110%, rgba(139,92,246,.18), transparent 60%),
+      var(--bg);
+    padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
+  }
+  header { width: 100%; max-width: 420px; text-align: center; margin-top: 2vh; }
+  h1 { font-size: 1.35rem; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+  .sub { color: var(--muted); font-size: .9rem; margin-top: 4px; min-height: 1.2em; }
+
+  main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; width: 100%; }
+
+  .player { position: relative; width: 220px; height: 220px; display: grid; place-items: center; }
+  .ring {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 180deg, var(--accent), var(--accent2), var(--accent));
+    opacity: 0; transform: scale(.9); transition: opacity .3s, transform .08s linear;
+    filter: blur(18px);
+  }
+  body.playing .ring { opacity: calc(.35 + var(--lvl) * .65); transform: scale(calc(.92 + var(--lvl) * .18)); }
+  body.connecting .ring { opacity: .35; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { transform: scale(1.02); opacity: .6; } }
+
+  #btn {
+    position: relative; width: 180px; height: 180px; border-radius: 50%; border: 1px solid var(--line);
+    background: linear-gradient(160deg, #1e293b, #0f172a); color: #fff; cursor: pointer;
+    display: grid; place-items: center; gap: 4px; padding: 0;
+    box-shadow: 0 20px 50px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
+    transition: transform .12s ease, background .3s;
+  }
+  #btn:active { transform: scale(.96); }
+  #btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 6px; }
+  body.idle #btn, body.error #btn { background: linear-gradient(160deg, var(--accent), #2563eb); border-color: transparent; }
+  #btn svg { width: 64px; height: 64px; }
+  #btn .lbl { font-size: 1rem; font-weight: 600; letter-spacing: .02em; }
+  .icon-stop, .icon-spin { display: none; }
+  body.playing .icon-play, body.connecting .icon-play { display: none; }
+  body.playing .icon-stop { display: block; }
+  body.connecting .icon-spin { display: block; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .status {
+    display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--line); font-size: .95rem; max-width: 100%;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  body.playing .dot { background: var(--ok); box-shadow: 0 0 0 4px rgba(34,197,94,.2); }
+  body.connecting .dot { background: var(--warn); }
+  body.error .dot { background: var(--bad); }
+  body.paused .dot { background: var(--warn); }
+
+  .bars { display: flex; gap: 4px; align-items: flex-end; height: 28px; opacity: 0; transition: opacity .3s; }
+  body.playing .bars { opacity: 1; }
+  .bars i { width: 5px; border-radius: 3px; background: linear-gradient(var(--accent2), var(--accent)); height: 4px; transition: height .1s; }
+
+  .info {
+    width: 100%; max-width: 420px; display: grid; grid-template-columns: repeat(3, 1fr);
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
+  }
+  .info div { padding: 12px 8px; text-align: center; }
+  .info div + div { border-left: 1px solid var(--line); }
+  .info b { display: block; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+  .info span { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+
+  .tip {
+    width: 100%; max-width: 420px; margin-top: 14px; font-size: .82rem; color: var(--muted);
+    line-height: 1.45; text-align: center; padding: 0 8px;
+  }
+  .tip strong { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body class="idle">
+  <header>
+    <h1>🎧 Som do PC</h1>
+    <div class="sub" id="pc">&nbsp;</div>
+  </header>
+
+  <main>
+    <div class="player">
+      <div class="ring"></div>
+      <button id="btn" aria-label="Ouvir">
+        <div>
+          <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>
+          <svg class="icon-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>
+          <svg class="icon-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9" /></svg>
+        </div>
+        <div class="lbl" id="lbl">Ouvir</div>
+      </button>
+    </div>
+
+    <div class="bars" id="bars" aria-hidden="true"></div>
+
+    <div class="status" role="status" aria-live="polite">
+      <span class="dot"></span><span id="status">Toque em Ouvir para começar</span>
+    </div>
+  </main>
+
+  <section class="info">
+    <div><b id="lat">–</b><span>Atraso</span></div>
+    <div><b id="tempo">–</b><span>Ouvindo há</span></div>
+    <div><b id="ouvintes">–</b><span>Aparelhos</span></div>
+  </section>
+  <p class="tip" id="tip">O som sai no que estiver ligado ao celular, como um fone Bluetooth.</p>
+
+  <audio id="audio" playsinline></audio>
+
+<script>
+const $ = id => document.getElementById(id);
+const btn = $('btn'), audio = $('audio');
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+let pc = null, wanted = false, retries = 0, retryTimer = null, statsTimer = null, startedAt = 0, serverPaused = false;
+
+// barras do medidor
+const BAR_N = 15;
+for (let i = 0; i < BAR_N; i++) $('bars').appendChild(document.createElement('i'));
+const bars = [...$('bars').children];
+
+if (isIOS) $('tip').innerHTML = '<strong>Deixe esta página aberta.</strong> Com a tela bloqueada o iPhone pode pausar o som.';
+
+function setState(state, text) {
+  document.body.classList.remove('idle', 'connecting', 'playing', 'error');
+  document.body.classList.add(state);
+  document.body.classList.toggle('paused', state === 'playing' && serverPaused);
+  $('status').textContent = text;
+  const lbl = state === 'playing' ? 'Parar' : state === 'connecting' ? 'Conectando' : 'Ouvir';
+  $('lbl').textContent = lbl;
+  btn.setAttribute('aria-label', lbl);
+  if (state !== 'playing') { setLevel(0); $('lat').textContent = '–'; $('tempo').textContent = '–'; }
+}
+
+function playingText() {
+  return serverPaused ? 'Transmissão pausada no PC' : 'Tocando ao vivo';
+}
+
+function waitIce(pc) {
+  if (pc.iceGatheringState === 'complete') return Promise.resolve();
+  return new Promise(resolve => {
+    pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') resolve(); });
+    setTimeout(resolve, 2000);
+  });
+}
+
+async function connect() {
+  clearTimeout(retryTimer);
+  setState('connecting', retries ? `Reconectando… (tentativa ${retries})` : 'Conectando…');
+  const conn = pc = new RTCPeerConnection();
+  conn.addTransceiver('audio', { direction: 'recvonly' });
+
+  conn.ontrack = ev => {
+    // Pede ao navegador o menor buffer possível (menos atraso)
+    try { ev.receiver.jitterBufferTarget = 0; } catch {}
+    try { ev.receiver.playoutDelayHint = 0; } catch {}
+    audio.srcObject = ev.streams[0] || new MediaStream([ev.track]);
+    audio.play().catch(() => setState('error', 'Toque no botão para liberar o som'));
+  };
+  conn.onconnectionstatechange = () => {
+    if (conn !== pc) return;
+    const s = conn.connectionState;
+    if (s === 'connected') {
+      retries = 0; startedAt = Date.now();
+      setState('playing', playingText());
+      startStats();
+      if (navigator.vibrate) navigator.vibrate(15);
+    } else if (s === 'failed' || s === 'disconnected') {
+      lost();
+    }
+  };
+
+  try {
+    await conn.setLocalDescription(await conn.createOffer());
+    await waitIce(conn);
+    const r = await fetch('/offer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sdp: conn.localDescription.sdp, type: conn.localDescription.type })
+    });
+    if (!r.ok) throw new Error('o PC respondeu ' + r.status);
+    if (conn !== pc) return;
+    await conn.setRemoteDescription(await r.json());
+  } catch (e) {
+    if (conn === pc) lost(e);
+  }
+}
+
+// Conexão caiu: tenta de novo sozinho, com espera crescente
+function lost(err) {
+  teardown();
+  if (!wanted) return;
+  retries++;
+  if (retries > 6) {
+    wanted = false; retries = 0;
+    setState('error', err ? 'Não foi possível conectar ao PC. O programa está aberto?' : 'Conexão perdida. Toque para tentar de novo.');
+    return;
+  }
+  const wait = Math.min(1000 * 2 ** (retries - 1), 8000);
+  setState('connecting', `Sem conexão. Tentando de novo em ${Math.round(wait / 1000)} s…`);
+  retryTimer = setTimeout(connect, wait);
+}
+
+function teardown() {
+  clearInterval(statsTimer);
+  if (pc) { const p = pc; pc = null; p.close(); }
+  audio.srcObject = null;
+}
+
+function stop() {
+  wanted = false; retries = 0;
+  clearTimeout(retryTimer);
+  teardown();
+  setState('idle', 'Parado. Toque em Ouvir para voltar.');
+}
+
+btn.onclick = () => {
+  if (document.body.classList.contains('error') && audio.srcObject) {
+    audio.play().then(() => setState('playing', playingText())).catch(() => {});
+    return;
+  }
+  if (wanted) stop();
+  else { wanted = true; retries = 0; connect(); }
+};
+
+// ---- nível e atraso (estatísticas reais do WebRTC) ----
+function setLevel(v) {
+  document.documentElement.style.setProperty('--lvl', v.toFixed(3));
+  bars.forEach((b, i) => {
+    const center = 1 - Math.abs(i - (BAR_N - 1) / 2) / (BAR_N / 2);
+    const jitter = 0.65 + 0.35 * Math.sin(Date.now() / 120 + i * 1.7);
+    b.style.height = (4 + v * 24 * (0.4 + 0.6 * center) * jitter) + 'px';
+  });
+}
+
+let smooth = 0;
+function startStats() {
+  clearInterval(statsTimer);
+  statsTimer = setInterval(async () => {
+    if (!pc) return;
+    const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+    $('tempo').textContent = elapsed < 60 ? elapsed + ' s' : Math.floor(elapsed / 60) + ' min';
+    try {
+      const stats = await pc.getStats();
+      let level = null, jb = null, rtt = null;
+      stats.forEach(s => {
+        if (s.type === 'inbound-rtp' && s.kind === 'audio') {
+          if (typeof s.audioLevel === 'number') level = s.audioLevel;
+          if (s.jitterBufferEmittedCount) jb = s.jitterBufferDelay / s.jitterBufferEmittedCount;
+        }
+        if (s.type === 'candidate-pair' && s.nominated && typeof s.currentRoundTripTime === 'number') rtt = s.currentRoundTripTime;
+      });
+      if (level !== null) {
+        const v = Math.min(1, Math.sqrt(level) * 1.3);  // escala mais "musical"
+        smooth = Math.max(v, smooth * 0.75);
+        setLevel(smooth);
+      } else setLevel(0.5);
+      if (jb !== null) {
+        const ms = Math.round((jb + (rtt || 0) / 2) * 1000 + 30);  // + captura/buffer do PC
+        $('lat').textContent = ms + ' ms';
+      }
+    } catch {}
+  }, 150);
+}
+
+// ---- status do PC ----
+async function poll() {
+  try {
+    const j = await (await fetch('/status', { cache: 'no-store' })).json();
+    $('pc').textContent = j.pc ? 'Conectado a ' + j.pc : '';
+    $('ouvintes').textContent = j.ouvintes;
+    if (j.pausado !== serverPaused) {
+      serverPaused = j.pausado;
+      if (document.body.classList.contains('playing')) setState('playing', playingText());
+    }
+  } catch {
+    $('pc').textContent = 'PC fora do ar';
+  }
+}
+poll(); setInterval(poll, 3000);
+
+// Tela de bloqueio / central de controle
+if ('mediaSession' in navigator) {
+  navigator.mediaSession.metadata = new MediaMetadata({ title: 'Som do PC', artist: 'Ao vivo pela rede local' });
+  navigator.mediaSession.setActionHandler('pause', stop);
+  navigator.mediaSession.setActionHandler('play', () => { if (!wanted) btn.click(); });
+}
+
+// Voltou para a página e a conexão tinha caído: reconecta
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && wanted && !pc) { retries = 0; connect(); }
+});
+
+if (!window.RTCPeerConnection) {
+  btn.disabled = true;
+  setState('error', 'Este navegador não suporta áudio ao vivo. Use Safari ou Chrome.');
+}
+</script>
+</body>
+</html>
