@@ -174,9 +174,6 @@ async function connect() {
   conn.addTransceiver('audio', { direction: 'recvonly' });
 
   conn.ontrack = ev => {
-    // Pede ao navegador o menor buffer possível (menos atraso)
-    try { ev.receiver.jitterBufferTarget = 0; } catch {}
-    try { ev.receiver.playoutDelayHint = 0; } catch {}
     audio.srcObject = ev.streams[0] || new MediaStream([ev.track]);
     audio.play().catch(() => setState('error', 'Toque no botão para liberar o som'));
   };
@@ -279,7 +276,7 @@ function startStats() {
         setLevel(smooth);
       } else setLevel(0.5);
       if (jb !== null) {
-        const ms = Math.round((jb + (rtt || 0) / 2) * 1000 + 30);  // + captura/buffer do PC
+        const ms = Math.round((jb + (rtt || 0) / 2) * 1000 + 70);  // + captura/folga do PC
         $('lat').textContent = ms + ' ms';
       }
     } catch {}

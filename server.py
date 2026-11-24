@@ -33,8 +33,17 @@ HOME = Path(sys.executable).parent if FROZEN else Path(__file__).parent
 STATIC = BUNDLE / "static"
 
 FRAME_MS = 20            # duração de cada pacote de áudio
-MAX_BUFFER_MS = 60       # acima disso descarta o mais antigo (segura a latência)
-SILENCE_GRACE = 1.5      # sem som do PC por 1,5 pacote: manda silêncio
+TARGET_BUFFER_MS = 80    # folga mantida no PC: absorve as rajadas irregulares da captura
+HIGH_BUFFER_MS = 160     # acumulou acima disso (relógios diferentes): volta para a folga
+MAX_BUFFER_MS = 500      # trava longa: limite de segurança
+
+if sys.platform == "win32":
+    # Timer do Windows em 1 ms (o padrão é 15,6 ms): pacotes saem no ritmo certo.
+    import ctypes
+    try:
+        ctypes.windll.winmm.timeBeginPeriod(1)
+    except OSError:
+        pass
 
 
 class Broadcaster:
@@ -77,20 +86,22 @@ class LoopbackTrack(MediaStreamTrack):
         self.buf = np.zeros((0, self.channels), dtype=np.int16)
         self.buf_lock = threading.Lock()
         self.pts = 0
-        self.last = None         # quando o último pacote saiu (monotonic)
+        self.start = None
+        self.filling = True      # enchendo a folga antes de tocar
         bc.add(self)
 
     def _set_rate(self, rate):
         self.rate = rate
         self.samples_per_frame = rate * FRAME_MS // 1000
+        self.target_samples = rate * TARGET_BUFFER_MS // 1000
+        self.high_samples = rate * HIGH_BUFFER_MS // 1000
         self.max_samples = rate * MAX_BUFFER_MS // 1000
 
     def feed(self, samples):
         with self.buf_lock:
             self.buf = np.concatenate((self.buf, samples))
             if len(self.buf) > self.max_samples:
-                # acumulou (travada momentânea): fica só com 1 pacote, o mais recente
-                self.buf = self.buf[-self.samples_per_frame:]
+                self.buf = self.buf[-self.target_samples:]
 
     async def recv(self):
         if self.readyState != "live":
@@ -102,31 +113,37 @@ class LoopbackTrack(MediaStreamTrack):
                 self.buf = self.buf[:0]
             self.pts = int(self.pts * self.bc.rate / self.rate)
             self._set_rate(self.bc.rate)
+            self.start = None
+            self.filling = True
 
-        # O ritmo de envio segue o relógio da placa de som: o pacote sai assim
-        # que a captura entrega 20 ms de áudio. Assim o buffer não acumula atraso
-        # por diferença entre o relógio da placa e o do Windows.
+        # Envio em ritmo constante (um pacote a cada 20 ms), como o navegador espera.
         n = self.samples_per_frame
-        frame_s = n / self.rate
-        if self.last is None:
-            self.last = time.monotonic() - frame_s
-        while True:
-            with self.buf_lock:
-                if len(self.buf) >= n:
-                    chunk = self.buf[:n]
-                    self.buf = self.buf[n:]
-                    self.last = time.monotonic()
-                    break
-            now = time.monotonic()
-            if now >= self.last + frame_s * SILENCE_GRACE:
-                # PC em silêncio (WASAPI para de entregar): completa com zeros
-                with self.buf_lock:
-                    chunk = self.buf[:n]
-                    self.buf = self.buf[n:]
-                chunk = np.concatenate((chunk, np.zeros((n - len(chunk), self.channels), np.int16)))
-                self.last = self.last + frame_s if now - self.last < 0.2 else now
-                break
-            await asyncio.sleep(0.003)
+        if self.start is None:
+            self.start = time.monotonic() - self.pts / self.rate
+        wait = self.start + self.pts / self.rate - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        elif wait < -0.2:
+            self.start = time.monotonic() - self.pts / self.rate   # ficou parado: não dispara pacotes
+
+        with self.buf_lock:
+            have = len(self.buf)
+            if self.filling and have >= self.target_samples:
+                self.filling = False
+            if not self.filling and have > self.high_samples:
+                # relógio da placa mais rápido que o do Windows: descarta o excesso
+                self.buf = self.buf[have - self.target_samples:]
+            if self.filling:
+                chunk = None
+            else:
+                chunk = self.buf[:n]
+                self.buf = self.buf[n:]
+                if len(self.buf) == 0 and len(chunk) < n:
+                    self.filling = True          # acabou o som (ou a captura atrasou)
+        if chunk is None:
+            chunk = np.zeros((n, self.channels), np.int16)
+        elif len(chunk) < n:
+            chunk = np.concatenate((chunk, np.zeros((n - len(chunk), self.channels), np.int16)))
 
         frame = AudioFrame.from_ndarray(chunk.reshape(1, -1), format="s16", layout="stereo")
         frame.sample_rate = self.rate
