@@ -410,6 +410,7 @@ def main():
     ap.add_argument("--device", help="parte do nome da saída de som a capturar")
     ap.add_argument("--list", action="store_true", help="lista as saídas de som")
     ap.add_argument("--console", action="store_true", help="roda sem a janela do painel")
+    ap.add_argument("--minimized", action="store_true", help="abre o painel minimizado")
     args = ap.parse_args()
 
     if (args.console or args.list) and sys.stdout is None:
@@ -448,7 +449,7 @@ def main():
         run_console(engine)
     else:
         from painel import run_gui
-        run_gui(engine, args.device)
+        run_gui(engine, args.device, args.minimized)
 
 
 if __name__ == "__main__":

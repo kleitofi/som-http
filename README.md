@@ -28,6 +28,9 @@ Para gerar de novo depois de mudar o código, rode `gerar_exe.bat`.
 - Escolha da saída de som capturada (↻ atualiza a lista se você ligar um fone/caixa depois).
 - Medidor do nível do som e botão **Pausar transmissão** (os celulares recebem silêncio).
 - Lista de aparelhos ouvindo, com opção de desconectar um.
+- **Iniciar com o Windows** (rodapé): abre sozinho, minimizado, quando você entra no Windows.
+  Fica registrado só para o seu usuário (não precisa de administrador) e guarda a porta e a
+  saída de som escolhidas. Se mover o `.exe` de pasta, abra-o uma vez para atualizar o caminho.
 
 ### Página do celular
 
@@ -42,6 +45,7 @@ iniciar.bat --console              roda sem janela, só no console
 iniciar.bat --list                 lista as saídas de som que podem ser capturadas
 iniciar.bat --device "Alto-fal"    captura uma saída específica (parte do nome)
 iniciar.bat --port 9000            muda a porta (padrão 8080)
+iniciar.bat --minimized            abre o painel já minimizado
 ```
 
 As opções podem ser combinadas, por exemplo `iniciar.bat --console --port 9000`.

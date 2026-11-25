@@ -8,6 +8,7 @@ from tkinter import messagebox, ttk
 
 import qrcode
 
+import autostart
 from server import BUNDLE, Engine, local_ips
 
 BG = "#eef1f5"
@@ -77,6 +78,7 @@ class Painel:
         self.ip = tk.StringVar(value=self.ips[0])
         self.dev = tk.StringVar(value=engine.device or "")
         self.shown_level = 0.0
+        self.auto = tk.BooleanVar(value=autostart.is_enabled())
 
         root.title("Som do PC")
         root.configure(bg=BG)
@@ -85,6 +87,7 @@ class Painel:
         self._build()
         self._load_devices()
         self._draw_qr()
+        self._sync_autostart()
         self._tick_level()
         self._tick_listeners()
 
@@ -186,9 +189,14 @@ class Painel:
         self.kick_btn = FlatButton(row, "Desconectar selecionado", self._kick, kind="danger")
         self.kick_btn.pack(side="right")
 
-        foot = tk.Label(self.root, text=f"Porta {self.e.port}  ·  {self.e.hostname}  ·  não exponha esta porta na internet",
-                        bg=BG, fg=MUTED, font=(FONT, 8))
-        foot.pack(pady=(0, 10))
+        foot = tk.Frame(self.root, bg=BG, padx=20)
+        foot.pack(fill="x", pady=(0, 10))
+        if autostart.available():
+            tk.Checkbutton(foot, text="Iniciar com o Windows", variable=self.auto,
+                           command=self._toggle_autostart, bg=BG, fg=INK, activebackground=BG,
+                           font=(FONT, 9), cursor="hand2").pack(side="left")
+        tk.Label(foot, text=f"Porta {self.e.port}  ·  {self.e.hostname}  ·  não exponha esta porta na internet",
+                 bg=BG, fg=MUTED, font=(FONT, 8)).pack(side="right")
 
     # ---------- endereço / QR ----------
 
@@ -238,6 +246,7 @@ class Painel:
         except Exception as ex:
             messagebox.showerror("Som do PC", f"Não foi possível capturar esta saída:\n{ex}")
         self._load_devices()
+        self._sync_autostart()
 
     def _refresh_devices(self):
         try:
@@ -245,6 +254,29 @@ class Painel:
         except Exception as ex:
             messagebox.showerror("Som do PC", f"Erro ao atualizar a lista:\n{ex}")
         self._load_devices()
+
+    # ---------- iniciar com o Windows ----------
+
+    def _autostart_args(self):
+        # Grava a saída de som só se não for a padrão (a padrão pode mudar).
+        dev = self.e.device if self.e.device != self.default_dev else None
+        return self.e.port, dev
+
+    def _toggle_autostart(self):
+        try:
+            if self.auto.get():
+                autostart.enable(*self._autostart_args())
+            else:
+                autostart.disable()
+        except OSError as ex:
+            messagebox.showerror("Som do PC", f"Não foi possível alterar a inicialização:\n{ex}")
+        self.auto.set(autostart.is_enabled())
+
+    def _sync_autostart(self):
+        try:
+            autostart.sync(*self._autostart_args())
+        except OSError:
+            pass
 
     # ---------- pausa ----------
 
@@ -324,7 +356,7 @@ class Painel:
         self.e.kick(sel[0])
 
 
-def run_gui(engine: Engine, device=None):
+def run_gui(engine: Engine, device=None, minimized=False):
     try:  # textos nítidos em telas com escala (125%, 150%...)
         import ctypes
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -353,7 +385,10 @@ def run_gui(engine: Engine, device=None):
         return
 
     Painel(root, engine)
-    root.deiconify()
+    if minimized:      # aberto pela inicialização do Windows: fica na barra de tarefas
+        root.iconify()
+    else:
+        root.deiconify()
 
     def on_close():
         if engine.listeners and not messagebox.askyesno(
